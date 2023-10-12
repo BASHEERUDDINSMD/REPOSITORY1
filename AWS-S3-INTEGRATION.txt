@@ -1,0 +1,70 @@
+AWS S3 - SNOWFLAKE INTEGRATION:
+--TO BUILD A TRUST RELATIONSHIP BETWEEN B/W AWS & SF ACCOUNT 
+
+-CREATE A POLICY WITH ALL S3 BUCKET ACCESSES(I.E PUT, GET & DELETE) -- IAM
+-CREATE A ROLE & ATTACH THIS POLICY 
+-CREATE STORAGE INTEGRATION USING IAM ROLE ARN IN SNOWFLAKE ACCOUNT 
+-AFTER CREATING INETGRATION IN SNOWFLAKE 
+	--UPDATE USER ARN & EXTERNAL ID IN AWS ROLE TRUST RELATIONSHIP 
+
+
+USNIG JSON CREATING IAM POLICY(Policy_SNOWFLAKE_INTEGRATION):
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect":"Allow",
+            "Action":[
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:GetObjectVerion",
+                "s3:DeleteObject",
+                "s3:DeleteObjectVerion"
+                ],
+                "Resource":"*"
+        },
+        {
+            "Effect":"Allow",
+            "Action":"s3:ListBucket",
+            "Resource":"*"
+        }
+        ]
+}
+
+ROLE: ROLE_FOR_SNOWFLAKE_INTEGRATION
+arn:aws:iam::654113302482:role/ROLE_FOR_SNOWFLAKE_INTEGRATION
+
+show integrations;
+use role accountadmin;
+create or replace storage integration AWS_STORAGE_INTEGRATION
+TYPE = EXTERNAL_STAGE
+STORAGE_PROVIDER = S3
+ENABLED = TRUE
+STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::654113302482:role/ROLE_FOR_SNOWFLAKE_INTEGRATION'
+STORAGE_ALLOWED_LOCATIONS = ('s3://iliaz-s3-bucket/shaik/');
+
+DESCRIBE STORAGE INTEGRATION AWS_STORAGE_INTEGRATION;
+SHOW STAGES;
+list @SHAIK_SAMPLE_STAGE;
+select $1,$2,$3 from @SHAIK_SAMPLE_STAGE/catalog-OLD.csv;
+use role sysadmin;
+SHOW PIPES;
+
+ALTER STORAGE INTEGRATION AWS_STORAGE_INTEGRATION
+SET STORAGE_ALLOWED_LOCATIONS = ('s3://iliaz-s3-bucket/shaik/', 's3://call-center-bucket/saba/');
+
+CREATE OR REPLACE STAGE HYD_STG.DATA_LOADS.SHAIK_SAMPLE_STAGE
+URL = 's3://iliaz-s3-bucket/shaik/'
+STORAGE_INTEGRATION = AWS_STORAGE_INTEGRATION;
+
+select * from table(validate_pipe_load(pipe_name=>'"HYD_STG"."DATA_LOADS"."TEST_PIPE"', start_time=>dateadd(hour,-1,current_timestamp())));
+
+select * from table(information_schema.copy_history(table_name=>'"HYD_STG"."DATA_LOADS"."CATALOG_STG"', start_time=> dateadd(hours, -1, current_timestamp())));
+
+CREATE OR REPLACE PIPE "HYD_STG"."DATA_LOADS".TEST_PIPE AUTO_INGEST = TRUE 
+AS COPY INTO "HYD_STG"."DATA_LOADS"."CATALOG_STG" 
+FROM @"HYD_STG"."DATA_LOADS"."SHAIK_SAMPLE_STAGE" FILE_FORMAT = ( FORMAT_NAME = "HYD_STG"."DATA_LOADS"."CSV_FORMAT");
+
+select system$pipe_status('TEST_PIPE');
+
+---------------------------------------------------------------------------------------------------------------
